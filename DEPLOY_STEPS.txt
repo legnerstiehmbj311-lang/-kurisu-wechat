@@ -1,0 +1,41 @@
+═══════════════════════════════════════════
+  牧濑红莉栖 · Render 部署指南
+═══════════════════════════════════════════
+
+【步骤 1】创建 GitHub 仓库
+  1. 打开 https://github.com/new
+  2. Repository name: kurisu-wechat
+  3. 选择 Public（公开）
+  4. 不要勾选任何初始化选项
+  5. 点击 "Create repository"
+
+【步骤 2】推送代码到 GitHub
+  打开终端，执行以下命令（把 YOUR_USERNAME 替换为你的 GitHub 用户名）：
+
+  cd "D:\ai智能体\牧濑红莉茜\deploy_wechat"
+  git remote add origin https://github.com/YOUR_USERNAME/kurisu-wechat.git
+  git branch -M main
+  git push -u origin main
+
+【步骤 3】部署到 Render
+  1. 打开 https://dashboard.render.com
+  2. 用 GitHub 账号登录
+  3. 点击 "New +" → "Web Service"
+  4. 连接你的 GitHub → 选择 kurisu-wechat 仓库
+  5. 配置：
+     - Name: kurisu-wechat
+     - Runtime: Python 3
+     - Build Command: pip install -r requirements.txt
+     - Start Command: python app.py
+  6. 点击 "Create Web Service"
+  7. 等待部署完成 → 获取 URL（类似 https://kurisu-wechat.onrender.com）
+
+【步骤 4】配置微信测试号
+  1. 微信打开: https://mp.weixin.qq.com/debug/cgi-bin/sandbox?t=sandbox/login
+  2. URL: https://kurisu-wechat.onrender.com/wechat
+  3. Token: kurisu_token_2024
+  4. 提交 → 配置成功 → 扫码关注
+
+═══════════════════════════════════════════
+  完成！在微信里跟牧濑红莉栖聊天吧
+═══════════════════════════════════════════

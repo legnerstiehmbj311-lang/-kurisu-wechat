@@ -46,6 +46,23 @@ def wx_handle():
 
 
 # ═══ 企业微信回调 ═══
+import base64, struct
+from Crypto.Cipher import AES
+
+WXWORK_AES_KEY = "JwzBhUOlS5ornRb3eblgSTpjSG59uejuepNrmJXk9G1"
+
+def wxwork_decrypt(encrypted: str, key: str) -> str:
+    """解密企业微信消息"""
+    key_bytes = base64.b64decode(key + "=")
+    cipher = AES.new(key_bytes, AES.MODE_CBC, key_bytes[:16])
+    decrypted = cipher.decrypt(base64.b64decode(encrypted))
+    # 去除 PKCS7 padding
+    pad = decrypted[-1]
+    decrypted = decrypted[:-pad]
+    # 格式: 16字节随机 + 4字节长度 + 消息 + receiverId
+    content_len = struct.unpack(">I", decrypted[16:20])[0]
+    return decrypted[20:20+content_len].decode("utf-8")
+
 @app.route("/wxwork", methods=["GET"])
 def wxwork_verify():
     """企业微信 URL 验证"""
@@ -53,14 +70,17 @@ def wxwork_verify():
     t = request.args.get("timestamp","")
     n = request.args.get("nonce","")
     e = request.args.get("echostr","")
-    # 企业微信验证: 解密 echostr 并返回明文
     try:
-        tmp = "".join(sorted([TOKEN,t,n,e]))
-        if hashlib.sha1(tmp.encode()).hexdigest() == s:
-            # 简单模式: 直接返回 echostr
-            return e
-    except: pass
-    return "fail", 403
+        # 1. 验证签名
+        tmp = "".join(sorted([TOKEN, t, n, e]))
+        if hashlib.sha1(tmp.encode()).hexdigest() != s:
+            return "signature_fail", 403
+        # 2. 解密 echostr
+        plain = wxwork_decrypt(e, WXWORK_AES_KEY)
+        return plain
+    except Exception as ex:
+        print(f"WxWork verify error: {ex}")
+        return str(ex), 403
 
 @app.route("/wxwork", methods=["POST"])
 def wxwork_handle():
