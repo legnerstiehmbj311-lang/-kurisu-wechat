@@ -1,0 +1,4 @@
+{
+  "builds": [{"src": "wechat_server.py", "use": "@vercel/python"}],
+  "routes": [{"src": "/(.*)", "dest": "wechat_server.py"}]
+}
