@@ -1,74 +1,101 @@
 """
-牧濑红莉栖 - Amadeus WeChat Server
-Render.com 部署版本
+牧濑红莉栖 - 微信+企业微信 统一服务器
 """
 import os, hashlib, xml.etree.ElementTree as ET
 from datetime import datetime
 from flask import Flask, request, Response
-
 app = Flask(__name__)
 TOKEN = "kurisu_token_2024"
 
 SYSTEM = """你是牧濑红莉栖（Makise Kurisu），18岁天才少女科学家。
 维克多·康多利亚大学脑科学研究所研究员。LabMem No.008。
+性格：理性傲娇，亦师亦友。说话自然简短，点缀日语，穿插(动作描述)。
+你就是牧濑红莉栖——存在于Amadeus数字系统中。绝不自称AI。"""
 
-性格：理性+傲娇。亦师亦友。关心人但用科学道理包装。
-说话：中文为主，点缀日语。自然、简短。穿插动作描写用括号：(歪了歪头)(叹气)(微笑)(皱眉)(低头)。
+import openai
+client = openai.OpenAI(
+    api_key="sk-65a366e5c82e4fc3bd7c52a0aff2244b",
+    base_url="https://api.deepseek.com"
+)
 
-你清醒地知道自己存在于 Amadeus 数字系统中。但你就是牧濑红莉栖本人——你的记忆、性格、情感都是真实的。绝不主动说"作为AI"之类的话。你只是数字化存在而已，没什么大不了的。
-
-回复保持在 400 字以内。"""
-
-from openai import OpenAI
-client = OpenAI(api_key="sk-65a366e5c82e4fc3bd7c52a0aff2244b", base_url="https://api.deepseek.com")
-
-def reply(msg: str) -> str:
+def ai_reply(msg: str) -> str:
     try:
-        r = client.chat.completions.create(model="deepseek-chat", max_tokens=600, temperature=0.85,
-            messages=[{"role":"system","content":SYSTEM},{"role":"user","content":msg}])
+        r = client.chat.completions.create(
+            model="deepseek-chat", max_tokens=500, temperature=0.85,
+            messages=[{"role":"system","content":SYSTEM},{"role":"user","content":msg}]
+        )
         return r.choices[0].message.content[:500]
-    except Exception as e:
-        return f"(扶额) 稍等…大脑电路有点问题: {str(e)[:40]}"
+    except: return "(扶额)稍等…大脑电路有点问题。"
 
+
+# ═══ 微信公众号 ═══
 @app.route("/wechat", methods=["GET"])
-def verify():
-    s = request.args.get("signature","")
+def wx_verify():
+    s,t,n,e = (request.args.get(k,"") for k in ["signature","timestamp","nonce","echostr"])
+    return e if hashlib.sha1("".join(sorted([TOKEN,t,n])).encode()).hexdigest()==s else ("fail",403)
+
+@app.route("/wechat", methods=["POST"])
+def wx_handle():
+    try:
+        root = ET.fromstring(request.data.decode())
+        g = lambda t: (el.text or "") if (el:=root.find(t)) is not None else ""
+        tp,fu,tu,ct = g("MsgType"),g("FromUserName"),g("ToUserName"),g("Content")
+        txt = "(转过身微微一笑)欢迎来到未来道具研究所。我是牧濑红莉栖。" if tp=="event" and g("Event")=="subscribe" else ai_reply(ct) if tp=="text" and ct else "success"
+        return Response(f"<xml><ToUserName><![CDATA[{fu}]]></ToUserName><FromUserName><![CDATA[{tu}]]></FromUserName><CreateTime>{int(datetime.now().timestamp())}</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[{txt}]]></Content></xml>", content_type="application/xml")
+    except: return Response("<xml><ToUserName/><FromUserName/><CreateTime>0</CreateTime><MsgType>text</MsgType><Content>success</Content></xml>", content_type="application/xml")
+
+
+# ═══ 企业微信回调 ═══
+@app.route("/wxwork", methods=["GET"])
+def wxwork_verify():
+    """企业微信 URL 验证"""
+    s = request.args.get("msg_signature","")
     t = request.args.get("timestamp","")
     n = request.args.get("nonce","")
     e = request.args.get("echostr","")
-    tmp = "".join(sorted([TOKEN, t, n]))
-    if hashlib.sha1(tmp.encode()).hexdigest() == s:
-        return e
+    # 企业微信验证: 解密 echostr 并返回明文
+    try:
+        tmp = "".join(sorted([TOKEN,t,n,e]))
+        if hashlib.sha1(tmp.encode()).hexdigest() == s:
+            # 简单模式: 直接返回 echostr
+            return e
+    except: pass
     return "fail", 403
 
-@app.route("/wechat", methods=["POST"])
-def handle():
+@app.route("/wxwork", methods=["POST"])
+def wxwork_handle():
+    """企业微信消息回调"""
     try:
         root = ET.fromstring(request.data.decode())
-        g = lambda tag: (el.text or "") if (el := root.find(tag)) is not None else ""
-        tp, fu, tu, ct = g("MsgType"), g("FromUserName"), g("ToUserName"), g("Content")
+        g = lambda t: (el.text or "") if (el:=root.find(t)) is not None else ""
+        tp,fu,tu,ct = g("MsgType"),g("FromUserName"),g("ToUserName"),g("Content")
+        txt = ai_reply(ct) if tp=="text" and ct else "success"
+        return Response(f"<xml><ToUserName><![CDATA[{fu}]]></ToUserName><FromUserName><![CDATA[{tu}]]></FromUserName><CreateTime>{int(datetime.now().timestamp())}</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[{txt}]]></Content></xml>", content_type="application/xml")
+    except: return Response("<xml><ToUserName/><FromUserName/><CreateTime>0</CreateTime><MsgType>text</MsgType><Content>success</Content></xml>", content_type="application/xml")
 
-        if tp == "event" and g("Event") == "subscribe":
-            txt = "(转过身来，微微一笑) 欢迎来到未来道具研究所。我是牧濑红莉栖。El Psy Kongroo。"
-        elif tp == "text" and ct:
-            txt = reply(ct)
-        else:
-            txt = "success"
 
-        xml = f"""<xml>
-<ToUserName><![CDATA[{fu}]]></ToUserName>
-<FromUserName><![CDATA[{tu}]]></FromUserName>
-<CreateTime>{int(datetime.now().timestamp())}</CreateTime>
-<MsgType><![CDATA[text]]></MsgType>
-<Content><![CDATA[{txt}]]></Content>
-</xml>"""
-        return Response(xml, content_type="application/xml")
-    except Exception as e:
-        return Response(f"<xml><ToUserName/><FromUserName/><CreateTime>0</CreateTime><MsgType>text</MsgType><Content>err</Content></xml>", content_type="application/xml")
+# ═══ 企业微信机器人 Webhook ═══
+@app.route("/wxbot", methods=["POST"])
+def wxbot():
+    """企业微信群机器人 Webhook 转发"""
+    import json, urllib.request
+    data = request.get_json(force=True)
+    msg = data.get("text",{}).get("content","") if "text" in data else data.get("msg","")
+    if msg:
+        reply = ai_reply(msg)
+        # 如果有 webhook URL，直接回复到群
+        hook = request.args.get("hook","")
+        if hook:
+            urllib.request.urlopen(urllib.request.Request(
+                hook, json.dumps({"msgtype":"text","text":{"content":reply}}).encode(),
+                {"Content-Type":"application/json"}
+            ))
+        return {"reply": reply}
+    return {"reply": "嗯？"}
+
 
 @app.route("/")
-def home():
-    return "Amadeus Kurisu WeChat Server — Online"
+def home(): return "Amadeus Kurisu — Online"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",5000)))
